@@ -1,0 +1,394 @@
+'use client';
+
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { formatStat } from './utils/shared';
+import { useDarkMode } from './DarkModeContext';
+
+// ---------------------------------------------------------------------------
+// Animated Counter Hook
+// ---------------------------------------------------------------------------
+
+function useAnimatedValue(target: number, duration = 400): number {
+  const [display, setDisplay] = useState(target);
+  const prevRef = useRef(target);
+  const rafRef = useRef<number>();
+
+  useEffect(() => {
+    const from = prevRef.current;
+    const to = target;
+    prevRef.current = to;
+
+    if (from === to) return;
+
+    const start = performance.now();
+    const diff = to - from;
+
+    function tick(now: number) {
+      const elapsed = now - start;
+      const t = Math.min(elapsed / duration, 1);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(Math.round(from + diff * eased));
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    }
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [target, duration]);
+
+  return display;
+}
+
+// formatStat imported from utils/shared
+const formatNumber = formatStat;
+
+// ---------------------------------------------------------------------------
+// Stat Pill
+// ---------------------------------------------------------------------------
+
+const BottomStatPill = memo<{ label: string; value: number; prefix?: string }>(
+  ({ label, value, prefix = '' }) => {
+    const isDark = useDarkMode();
+    const animated = useAnimatedValue(value);
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          padding: '6px 16px',
+          background: isDark ? 'rgba(25, 25, 40, 0.8)' : '#ffffff',
+          border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e8e8e8',
+          borderRadius: 8,
+          minWidth: 100,
+          boxShadow: isDark ? '0 1px 3px rgba(0,0,0,0.3)' : '0 1px 3px rgba(0,0,0,0.08)',
+        }}
+      >
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 400,
+            color: isDark ? '#64748b' : '#666',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            lineHeight: 1,
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 500,
+            color: isDark ? '#e2e8f0' : '#161616',
+            lineHeight: 1.4,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {formatNumber(animated, prefix)}
+        </span>
+      </div>
+    );
+  },
+);
+
+BottomStatPill.displayName = 'BottomStatPill';
+
+// ---------------------------------------------------------------------------
+// Address Search
+// ---------------------------------------------------------------------------
+
+function truncateAddress(address: string): string {
+  if (address.length <= 10) return address;
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+const AddressSearch = memo<{
+  highlightedAddress?: string | null;
+  onDismiss?: () => void;
+  onSearch: (address: string) => void;
+  externalError?: boolean;
+}>(({ onSearch, highlightedAddress, onDismiss, externalError }) => {
+  const isDark = useDarkMode();
+  const [value, setValue] = useState('');
+  const [error, setError] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync input value when highlight changes
+  useEffect(() => {
+    if (highlightedAddress) {
+      setValue(highlightedAddress);
+    }
+  }, [highlightedAddress]);
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      setError(false);
+      onSearch(trimmed);
+    },
+    [value, onSearch],
+  );
+
+  const handleDismiss = useCallback(() => {
+    setValue('');
+    onDismiss?.();
+  }, [onDismiss]);
+
+  // Flash red border on error (internal or external)
+  useEffect(() => {
+    if (externalError) setError(true);
+  }, [externalError]);
+
+  useEffect(() => {
+    if (error) {
+      const t = setTimeout(() => setError(false), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [error]);
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+    >
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 400,
+          color: isDark ? '#64748b' : '#666',
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          marginRight: 2,
+        }}
+      >
+        Address
+      </span>
+      <input
+        ref={inputRef}
+        type="text"
+        value={highlightedAddress ? truncateAddress(highlightedAddress) : value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Search address…"
+        style={{
+          width: 180,
+          padding: '5px 10px',
+          fontSize: 11,
+          fontFamily: 'inherit',
+          color: isDark ? '#e2e8f0' : '#161616',
+          background: highlightedAddress
+            ? 'rgba(61,99,255,0.08)'
+            : isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
+          border: `1px solid ${error ? 'rgba(239,68,68,0.7)' : highlightedAddress ? 'rgba(61,99,255,0.3)' : isDark ? 'rgba(255,255,255,0.08)' : '#e8e8e8'}`,
+          borderRadius: 8,
+          outline: 'none',
+          transition: 'border-color 0.3s ease',
+          boxShadow: isDark ? '0 1px 3px rgba(0,0,0,0.3)' : '0 1px 3px rgba(0,0,0,0.08)',
+        }}
+      />
+      {highlightedAddress ? (
+        <button
+          type="button"
+          onClick={handleDismiss}
+          style={{
+            padding: '5px 14px',
+            fontSize: 10,
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            color: isDark ? '#94a3b8' : '#666',
+            background: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
+            border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e8e8e8',
+            borderRadius: 8,
+            cursor: 'pointer',
+          }}
+        >
+          ✕
+        </button>
+      ) : (
+      <button
+        type="submit"
+        style={{
+          padding: '5px 14px',
+          fontSize: 10,
+          fontWeight: 600,
+          fontFamily: 'inherit',
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          color: '#fff',
+          background: isDark ? '#818cf8' : '#1a1a1a',
+          border: 'none',
+          borderRadius: 8,
+          cursor: 'pointer',
+          transition: 'background 0.15s ease',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = isDark ? '#5577ff' : '#333';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = isDark ? '#818cf8' : '#1a1a1a';
+        }}
+      >
+        Go
+      </button>
+      )}
+    </form>
+  );
+});
+
+AddressSearch.displayName = 'AddressSearch';
+
+// ---------------------------------------------------------------------------
+// Stats Bar (exported)
+// ---------------------------------------------------------------------------
+
+/** Chain symbol map for volume display */
+const CHAIN_SYMBOLS: Record<string, { prefix: string; suffix: string }> = {
+  solana: { prefix: '', suffix: ' SOL' },
+  ethereum: { prefix: '', suffix: ' ETH' },
+  base: { prefix: '', suffix: ' ETH' },
+  cex: { prefix: '$', suffix: '' },
+};
+
+function formatVolumeParts(totalVolume: Record<string, number>): string {
+  const parts: string[] = [];
+  for (const [chain, vol] of Object.entries(totalVolume)) {
+    if (vol === 0) continue;
+    const sym = CHAIN_SYMBOLS[chain] || { prefix: '', suffix: ` ${chain}` };
+    const formatted = vol >= 1_000_000
+      ? `${(vol / 1_000_000).toFixed(1)}M`
+      : vol >= 1_000
+        ? `${(vol / 1_000).toFixed(1)}K`
+        : vol.toLocaleString();
+    parts.push(`${sym.prefix}${formatted}${sym.suffix}`);
+  }
+  return parts.join(' · ') || '0';
+}
+
+export interface StatsBarProps {
+  totalTokens: number;
+  /** Per-chain volume breakdown */
+  totalVolume: Record<string, number>;
+  totalTrades: number;
+  /** The currently highlighted address (null = none) */
+  highlightedAddress?: string | null;
+  /** Called with the searched address. Parent should handle camera pan / not-found. */
+  onAddressSearch?: (address: string) => void;
+  /** Called when the user dismisses the highlight */
+  onDismissHighlight?: () => void;
+  /** Set to true to flash red error on the address input (auto-clears) */
+  searchError?: boolean;
+}
+
+export default memo<StatsBarProps>(function StatsBar({
+  totalTokens,
+  totalVolume,
+  totalTrades,
+  highlightedAddress,
+  onAddressSearch,
+  onDismissHighlight,
+  searchError,
+}) {
+  const isDark = useDarkMode();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Read initial address from URL
+  useEffect(() => {
+    const addr = searchParams.get('address');
+    if (addr && onAddressSearch) {
+      onAddressSearch(addr);
+    }
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSearch = useCallback(
+    (address: string) => {
+      // Sync to URL
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('address', address);
+      router.replace(`?${params.toString()}`, { scroll: false });
+
+      onAddressSearch?.(address);
+    },
+    [router, searchParams, onAddressSearch],
+  );
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '6px 12px',
+        fontFamily: "'IBM Plex Mono', monospace",
+        borderRadius: '0 0 12px 12px',
+        background: isDark ? 'rgba(14, 14, 22, 0.85)' : 'rgba(255,255,255,0.85)',
+        backdropFilter: 'blur(12px)',
+        border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #e8e8e8',
+        boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+      }}
+    >
+      <BottomStatPill label="Total Tokens" value={totalTokens} />
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          padding: '6px 16px',
+          background: isDark ? 'rgba(25, 25, 40, 0.8)' : '#ffffff',
+          border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e8e8e8',
+          borderRadius: 8,
+          minWidth: 100,
+          boxShadow: isDark ? '0 1px 3px rgba(0,0,0,0.3)' : '0 1px 3px rgba(0,0,0,0.08)',
+        }}
+      >
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 400,
+            color: isDark ? '#64748b' : '#666',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            lineHeight: 1,
+          }}
+        >
+          Volume
+        </span>
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 500,
+            color: isDark ? '#e2e8f0' : '#161616',
+            lineHeight: 1.4,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {formatVolumeParts(totalVolume)}
+        </span>
+      </div>
+      <BottomStatPill label="Transactions" value={totalTrades} />
+
+      {/* Separator */}
+      <div
+        style={{
+          width: 1,
+          height: 28,
+          background: isDark ? 'rgba(255,255,255,0.08)' : '#e0e0e0',
+          margin: '0 4px',
+        }}
+      />
+
+      <AddressSearch onSearch={handleSearch} highlightedAddress={highlightedAddress} onDismiss={onDismissHighlight} externalError={searchError} />
+    </div>
+  );
+});

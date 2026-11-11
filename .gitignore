@@ -1,0 +1,17 @@
+node_modules
+.next
+.env
+.env.local
+.turbo
+*.tsbuildinfo
+temp/
+data/
+!app/**/data/
+packages/*/data/
+*.db
+*.db-wal
+*.db-shm
+extracted/
+.tmp-sourcemap-extract/
+read.md
+file_list.txt

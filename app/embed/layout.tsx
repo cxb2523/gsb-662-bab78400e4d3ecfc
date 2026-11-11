@@ -1,0 +1,15 @@
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Embed — swarming',
+  description: 'Embeddable real-time network visualization widget.',
+  robots: { index: false, follow: false },
+};
+
+export default function EmbedLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
+      {children}
+    </div>
+  );
+}
